@@ -13,36 +13,31 @@ driver = None
 
 def fetch_cookie(email, password):
     global driver
-    print("fetch_cookie")
+    print("starting the driver ...")
     options = webdriver.ChromeOptions()
-    # profile = "C:\\Users\\weszi\\AppData\\Local\\Google\\Chrome\\User Data"
-    # options.add_argument(f"user-data-dir={profile}")
-    driver = webdriver.Chrome(options=options, use_subprocess=True)
+        
+    # disable save password popup
+    options.add_argument("--password-store=basic")
+    options.add_experimental_option(
+        "prefs",
+        {
+            "credentials_enable_service": False,
+            "profile.password_manager_enabled": False,
+        },
+    )
     
-    # options.add_argument("--headless") # Headless mode
 
-    # driver.get("https://app.pluralsight.com/id")
+    driver = webdriver.Chrome(options=options, use_subprocess=True)
     driver.get("https://app.pluralsight.com/id")
 
-    print("after get")
 
-    # sleep for 5 seconds
-    driver.implicitly_wait(5)
-
-    # Wait for the username field to be present and input email
+    print("driver started")
+    # Wait for the fields to be present and input text or click
     WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.ID, "Username"))).send_keys(email)
-
-    # sleep for 2 seconds
-    driver.implicitly_wait(2)
-
-    # Wait for the password field to be present and input password
     WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.ID, "Password"))).send_keys(password)
-
-    # sleep for 4 seconds
-    driver.implicitly_wait(4)
-
-    # Wait for the login button to be present and click it
     WebDriverWait(driver, 20).until(EC.element_to_be_clickable((By.ID, "login"))).click()
+    print("login clicked")
+    
 
 @app.route('/get_cookie', methods=['GET'])
 def get_cookie():
@@ -51,6 +46,8 @@ def get_cookie():
     print("before fetch_cookie")
     fetch_cookie(email, password)
     print("after fetch_cookie")
+    # return a response and keep the browser open (instead of return we use yield)
+    yield jsonify({"message":"Browser started"})
     # keep the browser open forever
     while True:
         time.sleep(1)

@@ -27,7 +27,7 @@ def fetch_cookie(email, password):
     )
     
 
-    driver = webdriver.Chrome(options=options, use_subprocess=True)
+    driver = webdriver.Chrome(options=options, use_subprocess=True, version_main = 126 )
     driver.get("https://app.pluralsight.com/id")
 
 
@@ -46,8 +46,8 @@ def get_cookie():
     print("before fetch_cookie")
     fetch_cookie(email, password)
     print("after fetch_cookie")
-    # return a response and keep the browser open (instead of return we use yield)
-    yield jsonify({"message":"Browser started"})
+    # return a http response
+    return {"message":"Cookie fetched successfully"}
     # keep the browser open forever
     while True:
         time.sleep(1)

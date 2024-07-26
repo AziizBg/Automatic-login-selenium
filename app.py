@@ -1,4 +1,4 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 import undetected_chromedriver as webdriver
 from selenium.webdriver.common.by import By
@@ -35,14 +35,24 @@ def fetch_cookie(email, password):
     # Wait for the fields to be present and input text or click
     WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.ID, "Username"))).send_keys(email)
     WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.ID, "Password"))).send_keys(password)
-    WebDriverWait(driver, 20).until(EC.element_to_be_clickable((By.ID, "login"))).click()
+    # WebDriverWait(driver, 20).until(EC.element_to_be_clickable((By.ID, "login"))).click()
     print("login clicked")
     
 
-@app.route('/get_cookie', methods=['GET'])
+@app.route('/get_cookie', methods=['POST'])
 def get_cookie():
-    email = "sami.belhadj@oddo-bhf.com"  # replace with dynamic value if needed
-    password = "7cB3MP.6y9.Z?c?"  # replace with dynamic value if needed
+    # email = "sami.belhadj@oddo-bhf.com"  # replace with dynamic value if needed
+    # password = "7cB3MP.6y9.Z?c?"  # replace with dynamic value if needed
+
+    data = request.get_json()
+    email = data.get("email")
+    password = data.get("password")
+    if not email or not password:
+        return jsonify({"error": "Email and password are required"}), 400
+    
+    print(email)
+    print(password)
+
     print("before fetch_cookie")
     fetch_cookie(email, password)
     print("after fetch_cookie")

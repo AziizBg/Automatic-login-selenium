@@ -8,18 +8,18 @@ import undetected_chromedriver as webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import NoSuchWindowException
 import time
-import subprocess
 import requests
-import webbrowser
 from requests.exceptions import RequestException
 import warnings
 from urllib3.exceptions import InsecureRequestWarning
 import logging
-# Suppress InsecureRequestWarning
+from start import start, start_ngrok
 
+# Suppress InsecureRequestWarning
 warnings.simplefilter('ignore', InsecureRequestWarning)
-requests.packages.urllib3.add_stderr_logger()
+# requests.packages.urllib3.add_stderr_logger()
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
@@ -53,38 +53,29 @@ def fetch_cookie(email, password):
 
     print("driver started")
     # Wait for the fields to be present and input text or click
-    # WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.ID, "Username"))).send_keys(email)
-    # WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.ID, "Password"))).send_keys(password)
+    WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.ID, "Username"))).send_keys(email)
+    WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.ID, "Password"))).send_keys(password)
     print("login clicked")
 
 @app.route('/get_cookie', methods=['POST'])
 def get_cookie():
-    global licenceId
-    global endTime
+    print("open pluralsight request received")
+    global licenceId, endTime, stopChecking
     data = request.get_json()
     email = data.get("email")
     password = data.get("password")
     licenceId = data.get("licenceId")
     endTime= data.get("formattedEndTime")
-    print("licenceId:",licenceId)
     print("endtime:",endTime)
     if not email or not password:
         return jsonify({"error": "Email and password are required"}), 400
-    
-    print(email)
-    print(password)
-
-    print("before fetch_cookie")
     fetch_cookie(email, password)
-    print("after fetch_cookie")
-    
     response = jsonify({"message": "pluralsight opened"})
     response.status_code = 200
     response.headers['Custom-Header'] = 'Header-Value'
-    # Thread(target = automatic_close_task, daemon=True).start()
+    stopChecking = False
+    Thread(target = background_timeLeft, daemon=True).start()
     return response
-    # automatic_close_task()
-
 
 @app.route('/close', methods=['GET'])
 def close():
@@ -98,58 +89,62 @@ def close():
     else:
         return {"message": "No browser to close"}, 400
 
-def start_ngrok():
-    # Start ngrok tunnel
-    ngrok = subprocess.Popen(['./ngrok.exe', 'http', '5000'])
-    
-    # Allow some time for ngrok to initialize
-    time.sleep(5)
-    
-    # Fetch the ngrok public URL
-    ngrok_url = requests.get('http://localhost:4040/api/tunnels').json()['tunnels'][0]['public_url']
-    return ngrok_url
-
-
-def start():
-    # Open the Angular application with the ngrok URL as a query parameter
-    # angular_url = f"http://localhost:4200/?ngrokUrl={ngrok_url}"
-    angular_url = f"http://localhost:4200"
-    webbrowser.open(angular_url)
-    return "Angular application opened", 200
 
 # Background task to automatically close the session
-def automatic_close_task():     
-    global endTime, licenceId, stopChecking
-    formattedTime = datetime.fromisoformat(endTime[:23])+timedelta(minutes=5)
+def background_timeLeft():     
+    global endTime, licenceId, stopChecking, driver
+    formattedTime = datetime.fromisoformat(endTime[:23])+timedelta(minutes=0)
     while not stopChecking:
         print("time left: ", formattedTime-datetime.now())
         if endTime and datetime.now() >= formattedTime:
-            automatic_close(licenceId)
+            automatic_close()
             endTime = None      # Reset endTime after closing
             stopChecking=True
+        # check if the browser has been closed by the user:
+        if driver and is_browser_closed(driver):
+            print("Browser closed by user")
+            driver = None
+            stopChecking=True
+            automatic_close()
         time.sleep(10)  # Check every 10 seconds
 
-def automatic_close(id):
-    global driver
-    backend_url =  f"https://localhost:7189/api/Licence/{id}/return"
-    print("sending close request to ", backend_url)
-    try:
-        response = requests.get(backend_url, verify=False) 
-        response.raise_for_status()
-        print("browser closed") 
-    except RequestException as e:
-        print(f"error: {e}")
-
-def shutdown_handler(signal, frame):
-    global licenceId
-    print("Shutting down server...")
-    if licenceId:
-        print("sending logout request...")
-        automatic_close(licenceId)
-        time.sleep(10)
+def automatic_close():
+    global driver, licenceId
     if driver:
         print("closing driver ...")
         driver.quit()
+        print("Browser closed")
+    backend_url =  f"https://localhost:7189/api/Licence/{licenceId}/return"
+    try:
+        print("sending request to ", backend_url)
+        response = requests.post(backend_url, verify=False, json={"isBrowserClosed": True}) 
+        response.raise_for_status()
+        print("licence returned successfully") 
+        licenceId = None
+        driver = None
+    except RequestException as e:
+        print(f"error: {e}")
+        if response is not None:
+            print(f"Response content: {response.content}")
+
+def is_browser_closed(driver):
+    try:
+        # Try accessing something in the browser
+        driver.current_url
+        return False  # Browser is still open
+    except NoSuchWindowException:
+        return True  # Browser is closed
+
+
+def shutdown_handler(signal, frame):
+    global licenceId
+    print("Detected kill signal, shutting down...")
+    if licenceId:
+        automatic_close()
+    if driver:
+        print("closing driver ...")
+        driver.quit()
+        print("Browser closed")
     sys.exit(0) # Register signal handlers 
  
 signal.signal(signal.SIGINT, shutdown_handler) # Handle Ctrl+C 
@@ -158,9 +153,8 @@ signal.signal(signal.SIGTERM, shutdown_handler) # Handle termination signal
 if __name__ == '__main__':
     # Start ngrok and notify the remote server
     # ngrok_url = start_ngrok()
-    # Thread(target = automatic_close_task, daemon=True).start()
     # response = start()
     # print(f"Ngrok URL sent to remote server ")
-    response= requests.get("https://localhost:7189/api/Licence/", verify=False)
-    print(response)
     app.run(debug=True, use_reloader=False)
+
+

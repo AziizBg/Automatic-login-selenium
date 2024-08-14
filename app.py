@@ -47,6 +47,8 @@ def fetch_cookie(email, password):
             "profile.password_manager_enabled": False,
         },
     )
+
+    options.add_argument("--disable-gpu")
     
     driver = webdriver.Chrome(options=options, use_subprocess=True, version_main=126)
     driver.get("https://app.pluralsight.com/id")
@@ -82,6 +84,7 @@ def close():
     global stopChecking, endTime, driver
     print("close request received")
     if driver:
+        driver.close()
         driver.quit()
         driver = None
         endTime = None      # Reset endTime after closing
@@ -114,6 +117,7 @@ def automatic_close():
     global driver, licenceId
     if driver:
         print("closing driver ...")
+        driver.close()
         driver.quit()
         print("Browser closed")
     backend_url =  f"https://localhost:7189/api/Licence/{licenceId}/return"
@@ -145,6 +149,7 @@ def shutdown_handler(signal, frame):
         automatic_close()
     if driver:
         print("closing driver ...")
+        driver.close()
         driver.quit()
         print("Browser closed")
     sys.exit(0) # Register signal handlers 

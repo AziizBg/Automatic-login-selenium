@@ -79,11 +79,13 @@ def get_cookie():
 
 @app.route('/close', methods=['GET'])
 def close():
+    global stopChecking, endTime, driver
     print("close request received")
-    global driver
     if driver:
         driver.quit()
         driver = None
+        endTime = None      # Reset endTime after closing
+        stopChecking=True
         print("Browser closed")
         return {"message": "Browser closed"}
     else:
@@ -153,7 +155,7 @@ signal.signal(signal.SIGTERM, shutdown_handler) # Handle termination signal
 if __name__ == '__main__':
     # Start ngrok and notify the remote server
     # ngrok_url = start_ngrok()
-    # response = start()
+    response = start()
     # print(f"Ngrok URL sent to remote server ")
     app.run(debug=True, use_reloader=False)
 

@@ -15,7 +15,7 @@ from requests.exceptions import RequestException
 import warnings
 from urllib3.exceptions import InsecureRequestWarning
 import logging
-from start import start, start_ngrok
+from start import start
 
 # Suppress InsecureRequestWarning
 warnings.simplefilter('ignore', InsecureRequestWarning)
@@ -31,12 +31,10 @@ stopChecking = False
 
 
 
-def fetch_cookie(email, password):
+def open_driver(email, password):
     global driver
     print("starting the driver ...")
     options = webdriver.ChromeOptions()
-
-    options.add_experimental_option("debuggerAddress", "localhost:9250")
         
     # disable save password popup
     options.add_argument("--password-store=basic")
@@ -50,28 +48,31 @@ def fetch_cookie(email, password):
 
     options.add_argument("--disable-gpu")
     
-    driver = webdriver.Chrome(options=options, use_subprocess=True, version_main=126)
+    driver = webdriver.Chrome(options=options, use_subprocess=True, version_main=128)
     driver.get("https://app.pluralsight.com/id")
 
     print("driver started")
     # Wait for the fields to be present and input text or click
     WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.ID, "Username"))).send_keys(email)
     WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.ID, "Password"))).send_keys(password)
+    # WebDriverWait(driver, 20).until(EC.element_to_be_clickable((By.ID, "login"))).click()
+
     print("login clicked")
 
-@app.route('/get_cookie', methods=['POST'])
-def get_cookie():
+@app.route('/open', methods=['POST'])
+def open_pluralsight():
     print("open pluralsight request received")
     global licenceId, endTime, stopChecking
     data = request.get_json()
+    unformattedEndTime= data.get("endTime")
+    endTime = datetime.fromisoformat(unformattedEndTime[:23])
     email = data.get("email")
     password = data.get("password")
     licenceId = data.get("licenceId")
-    endTime= data.get("formattedEndTime")
     print("endtime:",endTime)
     if not email or not password:
         return jsonify({"error": "Email and password are required"}), 400
-    fetch_cookie(email, password)
+    open_driver(email, password)
     response = jsonify({"message": "pluralsight opened"})
     response.status_code = 200
     response.headers['Custom-Header'] = 'Header-Value'
@@ -81,27 +82,34 @@ def get_cookie():
 
 @app.route('/close', methods=['GET'])
 def close():
-    global stopChecking, endTime, driver
+    global stopChecking, endTime, driver, licenceId
     print("close request received")
     if driver:
         driver.close()
         driver.quit()
         driver = None
-        endTime = None      # Reset endTime after closing
+        endTime = None      
+        licenceId = None
         stopChecking=True
         print("Browser closed")
         return {"message": "Browser closed"}
     else:
         return {"message": "No browser to close"}, 400
-
+    
+@app.route('/extend', methods=['GET'])
+def extend():
+    global endTime
+    print("extend request received")
+    endTime= datetime.now() + timedelta(hours=2)
+    print("endtime:",endTime)
+    return jsonify({"message":"End time extended successfully"}),200
 
 # Background task to automatically close the session
 def background_timeLeft():     
     global endTime, licenceId, stopChecking, driver
-    formattedTime = datetime.fromisoformat(endTime[:23])+timedelta(minutes=0)
     while not stopChecking:
-        print("time left: ", formattedTime-datetime.now())
-        if endTime and datetime.now() >= formattedTime:
+        print("time left: ", endTime-datetime.now())
+        if endTime and datetime.now() >= endTime:
             automatic_close()
             endTime = None      # Reset endTime after closing
             stopChecking=True
@@ -120,7 +128,7 @@ def automatic_close():
         driver.close()
         driver.quit()
         print("Browser closed")
-    backend_url =  f"https://localhost:7189/api/Licence/{licenceId}/return"
+    backend_url =  f"https://localhost:7189/api/Licence/return/{licenceId}"
     try:
         print("sending request to ", backend_url)
         response = requests.post(backend_url, verify=False, json={"isBrowserClosed": True}) 
@@ -158,10 +166,7 @@ signal.signal(signal.SIGINT, shutdown_handler) # Handle Ctrl+C
 signal.signal(signal.SIGTERM, shutdown_handler) # Handle termination signal
 
 if __name__ == '__main__':
-    # Start ngrok and notify the remote server
-    # ngrok_url = start_ngrok()
-    response = start()
-    # print(f"Ngrok URL sent to remote server ")
+    # response = start()
     app.run(debug=True, use_reloader=False)
 
 

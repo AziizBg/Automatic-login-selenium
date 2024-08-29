@@ -55,7 +55,7 @@ def open_driver(email, password):
     # Wait for the fields to be present and input text or click
     WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.ID, "Username"))).send_keys(email)
     WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.ID, "Password"))).send_keys(password)
-    # WebDriverWait(driver, 20).until(EC.element_to_be_clickable((By.ID, "login"))).click()
+    WebDriverWait(driver, 20).until(EC.element_to_be_clickable((By.ID, "login"))).click()
 
     print("login clicked")
 
